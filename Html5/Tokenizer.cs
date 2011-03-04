@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 
 namespace Html5.Tokenizer
 {
@@ -23,38 +24,15 @@ namespace Html5.Tokenizer
 			return _currentInputChar;
 		}
 		
-		void Emit ()
+		void Emit (Token token)
 		{
-			Console.WriteLine (_lastToken);
+			Console.WriteLine (token);
 		}
 		
 		void ParseError (string message)
 		{
 			Console.WriteLine ("! " + message);
 		}
-		
-		#region Tokens
-		
-		Token _lastToken = new Token ();
-		
-		void CharacterToken (int ch)
-		{
-			_lastToken.Type = TokenType.Character;
-			_lastToken.Character = (char)ch;
-		}
-		
-		void EndOfFileToken ()
-		{
-			_lastToken.Type = TokenType.EndOfFile;
-		}
-		
-		void StartTagToken (int ch)
-		{
-			_lastToken.Type = TokenType.StartTag;
-			_lastToken.TagName = char.ToLowerInvariant((char)ch).ToString ();
-		}
-		
-		#endregion
 		
 		#region Parse States
 		
@@ -69,16 +47,13 @@ namespace Html5.Tokenizer
 				break;
 			case '\u0000':
 				ParseError ("Unexpected NULL character.");
-				CharacterToken (_currentInputChar);
-				Emit ();
+				Emit (Token.CharacterToken (_currentInputChar));
 				break;
 			case -1:
-				EndOfFileToken ();
-				Emit ();
+				Emit (Token.EndOfFileToken ());
 				break;
 			default:
-				CharacterToken (_currentInputChar);
-				Emit ();
+				Emit (Token.CharacterToken (_currentInputChar));
 				break;
 			}
 		}
@@ -86,6 +61,8 @@ namespace Html5.Tokenizer
 		void CharacterReferenceInData ()
 		{
 		}
+
+		Token _currentTagToken = null;
 		
 		void TagOpen ()
 		{
@@ -98,7 +75,7 @@ namespace Html5.Tokenizer
 				_state = EndTagOpen;
 			}
 			else if (('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z')) {
-				StartTagToken (ch);
+				_currentTagToken = Token.StartTagToken (ch);
 				_state = TagName;
 			}
 			else if (ch == '?') {
@@ -107,8 +84,7 @@ namespace Html5.Tokenizer
 			}
 			else {
 				ParseError ("Expected tag name.");
-				CharacterToken ('<');
-				Emit ();
+				Emit (Token.CharacterToken ('<'));
 				_state = Data;
 				_state ();
 			}
@@ -116,7 +92,96 @@ namespace Html5.Tokenizer
 		
 		void TagName ()
 		{
-			
+			switch (_currentInputChar)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+				_state = BeforeAttributeName;
+				break;
+			case '/':
+				_state = SelfClosingStartTag;
+				break;
+			case '>':
+				_state = Data;
+				Emit (_currentTagToken);
+				_currentTagToken = null;
+				break;
+			case '\u0000':
+				ParseError ("Unexpected NULL in tag name.");
+				_currentTagToken.TagName += '\uFFFD';
+				break;
+			case -1:
+				ParseError ("Unexpected EOF in tag name.");
+				_state = Data;
+				_state ();
+				break;
+			default:
+				{
+					var ch = (char)_currentInputChar;
+					if ('A' <= ch && ch <= 'Z') {
+						ch = char.ToLowerInvariant (ch);
+					}
+					_currentTagToken.TagName += ch;
+				}
+				break;
+			}
+		}
+
+		void BeforeAttributeName ()
+		{
+			Attribute attr;
+
+			switch (_currentInputChar)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+				// Do nothing
+				break;
+			case '/':
+				_state = SelfClosingStartTag;
+				break;
+			case '>':
+				_state = Data;
+				Emit (_currentTagToken);
+				break;
+			case '\u0000':
+				ParseError ("Unexpected NULL before attribute name.");
+				attr = new Attribute ("\uFFFD");
+				_currentTagToken.AddAttribute (attr);
+				_state = AttributeName;
+				break;
+			case -1:
+				ParseError ("Unexpected EOF before attribute name.");
+				_state = Data;
+				_state ();
+				break;
+			case '\"':
+			case '\'':
+			case '<':
+			case '=':
+				ParseError ("Unexpected `" + _currentInputChar + "` before attribute name");
+				attr = new Attribute (_currentInputChar);
+				_currentTagToken.AddAttribute (attr);
+				_state = AttributeName;
+				break;
+			default:
+				attr = new Attribute (_currentInputChar);
+				_currentTagToken.AddAttribute (attr);
+				_state = AttributeName;
+				break;
+			}
+		}
+
+		void AttributeName ()
+		{
+		}
+
+		void SelfClosingStartTag ()
+		{
 		}
 			
 		void EndTagOpen ()
@@ -140,6 +205,19 @@ namespace Html5.Tokenizer
 		EndOfFile,
 		StartTag
 	}
+
+	public class Attribute
+	{
+		public string Name;
+
+		public Attribute (string name) {
+			Name = name;
+		}
+
+		public Attribute (int ch) {
+			Name = ((char)ch).ToString ();
+		}
+	}
 	
 	public class Token
 	{
@@ -147,13 +225,45 @@ namespace Html5.Tokenizer
 		
 		public char Character;
 		public string TagName;
+
+		List<Attribute> _attributes;
+
+		public void AddAttribute (Attribute attr)
+		{
+			if (_attributes == null) {
+				_attributes = new List<Attribute>();
+			}
+			_attributes.Add (attr);
+		}
 		
 		public override string ToString ()
 		{
 			return string.Format ("[Token Type={0}]", Type);
 		}
+
+		public static Token CharacterToken (int ch)
+		{
+			return new Token () {
+				Type = TokenType.Character,
+				Character = (char)ch
+			};
+		}
+
+		public static Token EndOfFileToken ()
+		{
+			return new Token () {
+				Type = TokenType.EndOfFile
+			};
+		}
+
+		public static Token StartTagToken (int ch)
+		{
+			return new Token () {
+				Type = TokenType.StartTag,
+				TagName = char.ToLowerInvariant((char)ch).ToString ()
+			};
+		}
 	}
 }
-
 
 
