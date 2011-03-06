@@ -166,7 +166,7 @@ namespace Html5.Tokenizer
 
 		public char Character;
 
-		public static Token CharacterToken (int ch)
+		public static Token CharacterTokenF (int ch)
 		{
 			return new Token (TokenType.Character) {
 				Character = (char)ch

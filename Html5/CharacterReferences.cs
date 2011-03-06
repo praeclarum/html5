@@ -1,15 +1,35 @@
 using System;
+using System.Collections.Generic;
 
 namespace Html5
 {
 	public static class CharacterReferences
 	{
+		class Item {
+			public string Name;
+			public char Char1;
+			public char Char2;
+		}
+
+		static List<Item> _items = new List<Item> ();
+
+		public static bool FirstCharMatches (int ch)
+		{
+			var c = (char)ch;
+			foreach (var i in _items) {
+				if (i.Name[0] == c) return true;
+			}
+			return false;
+		}
+
 		static void R (string name, char ch)
 		{
+			_items.Add (new Item () { Name = name, Char1 = ch });
 		}
 
 		static void R (string name, char ch1, char ch2)
 		{
+			_items.Add (new Item () { Name = name, Char1 = ch1, Char2 = ch2 });
 		}
 
 		static CharacterReferences ()

@@ -41,6 +41,59 @@ namespace Html5.Tokenizer
 			_currentInputChar = _reader.Read ();
 			return _currentInputChar;
 		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/Overview.html#consume-a-character-reference
+		/// </summary>
+		string ConsumeCharacterReferenceF ()
+		{
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+			case '<':
+			case '&':
+			case -1:
+				// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
+				return "";
+			case '#':
+				ch = ConsumeNextInputChar ();
+				if (ch == 'x' || ch == 'X') {
+					return ConsumeHexCharacterReference ();
+				}
+				else {
+					return ConsumeDecCharacterReference ();
+				}
+			default:
+				if (_additionalAllowedChar > 0 && ch == _additionalAllowedChar) {
+					// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
+					return "";
+				}
+				else {
+					if (CharacterReferences.FirstCharMatches (ch)) {
+						throw new NotImplementedException ("Named Ref");
+					}
+					else {
+						// If no match can be made, then no characters are consumed, and nothing is returned.
+						return "";
+					}
+				}
+			}
+		}
+
+		string ConsumeDecCharacterReference ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		string ConsumeHexCharacterReference ()
+		{
+			throw new NotImplementedException ();
+		}
 		
 		void Emit (Token token)
 		{
@@ -48,6 +101,11 @@ namespace Html5.Tokenizer
 				_isEof = true;
 			}
 			Console.Write (token);
+		}
+
+		void EmitChar (int ch)
+		{
+			Emit (Token.CharacterTokenF (ch));
 		}
 		
 		void ParseError (string message)
@@ -71,72 +129,30 @@ namespace Html5.Tokenizer
 				break;
 			case '\u0000':
 				ParseError ("Unexpected NULL character.");
-				Emit (Token.CharacterToken (_currentInputChar));
+				EmitChar (_currentInputChar);
 				break;
 			case -1:
 				Emit (Token.EndOfFileToken ());
 				break;
 			default:
-				Emit (Token.CharacterToken (_currentInputChar));
+				EmitChar (_currentInputChar);
 				break;
 			}
 		}
 
 		/// <summary>
-		/// Characters the reference in data.
+		/// http://dev.w3.org/html5/spec/Overview.html#character-reference-in-data-state
 		/// </summary>
 		void CharacterReferenceInData ()
 		{
 			_additionalAllowedChar = -2;
-			ConsumeCharacterReference ();
-		}
-
-		/// <summary>
-		/// http://dev.w3.org/html5/spec/Overview.html#consume-a-character-reference
-		/// </summary>
-		void ConsumeCharacterReference ()
-		{
-			var ch = _currentInputChar;
-
-			switch (ch)
-			{
-			case '\t':
-			case '\r':
-			case '\n':
-			case ' ':
-			case '<':
-			case '&':
-			case -1:
-				// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
-				break;
-			case '#':
-				ch = ConsumeNextInputChar ();
-				if (ch == 'x' || ch == 'X') {
-					ConsumeHexCharacterReference ();
-				}
-				else {
-					ConsumeDecCharacterReference ();
-				}
-				break;
-			default:
-				if (ch == _additionalAllowedChar) {
-					// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
-				}
-				else {
-					throw new NotImplementedException ("Named Ref");
-				}
-				break;
+			var ret = ConsumeCharacterReferenceF ();
+			if (string.IsNullOrEmpty (ret)) {
+				EmitChar ('&');
 			}
-		}
+			_state = Data;
 
-		void ConsumeDecCharacterReference ()
-		{
-			throw new NotImplementedException ();
-		}
-
-		void ConsumeHexCharacterReference ()
-		{
-			throw new NotImplementedException ();
+			_state ();// UnconsumeChar
 		}
 
 		void TagOpen ()
@@ -159,7 +175,7 @@ namespace Html5.Tokenizer
 			}
 			else {
 				ParseError ("Expected tag name.");
-				Emit (Token.CharacterToken ('<'));
+				EmitChar ('<');
 				_state = Data;
 				_state ();
 			}
@@ -560,8 +576,8 @@ namespace Html5.Tokenizer
 				break;
 			case -1:
 				ParseError ("Unexpected EOF in end tag.");
-				Emit (Token.CharacterToken ('<'));
-				Emit (Token.CharacterToken ('/'));
+				EmitChar ('<');
+				EmitChar ('/');
 				_state = Data;
 				_state ();
 				break;
