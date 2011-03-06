@@ -13,9 +13,9 @@ namespace Html5.Tokenizer
 		
 		int _currentInputChar;
 
-		Token _currentTag = null;
-		Token _currentDoctypeToken = null;
-		Token _currentComment = null;
+		TagToken _currentTag = null;
+		DoctypeToken _currentDoctypeToken = null;
+		CommentToken _currentComment = null;
 
 		int _additionalAllowedChar = -2;
 
@@ -47,7 +47,7 @@ namespace Html5.Tokenizer
 			if (token.Type == TokenType.EndOfFile) {
 				_isEof = true;
 			}
-			Console.WriteLine (token);
+			Console.Write (token);
 		}
 		
 		void ParseError (string message)
@@ -98,7 +98,7 @@ namespace Html5.Tokenizer
 				_state = EndTagOpen;
 			}
 			else if (('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z')) {
-				_currentTag = Token.StartTagToken (ch);
+				_currentTag = new StartTagToken (ch);
 				_state = TagName;
 			}
 			else if (ch == '?') {
@@ -458,17 +458,72 @@ namespace Html5.Tokenizer
 		/// </summary>
 		void AfterAttributeValueQuoted ()
 		{
-			throw new NotImplementedException ();
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+				_state = BeforeAttributeName;
+				break;
+			case '/':
+				_state = SelfClosingStartTag;
+				break;
+			case '>':
+				_state = Data;
+				Emit (_currentTag);
+				break;
+			case -1:
+				ParseError ("Unexpected EOF after attribute value.");
+				_state = Data;
+				_state ();
+				break;
+			default:
+				ParseError ("Unexpected `" + (char)ch + "` after attribute value.");
+				_state = BeforeAttributeName;
+				_state ();
+				break;
+			}
 		}
 
 		void SelfClosingStartTag ()
 		{
 			throw new NotImplementedException ();
 		}
-			
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/Overview.html#end-tag-open-state
+		/// </summary>
 		void EndTagOpen ()
 		{
-			throw new NotImplementedException ();
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '>':
+				ParseError ("Unexpected `>` in end tag.");
+				_state = Data;
+				break;
+			case -1:
+				ParseError ("Unexpected EOF in end tag.");
+				Emit (Token.CharacterToken ('<'));
+				Emit (Token.CharacterToken ('/'));
+				_state = Data;
+				_state ();
+				break;
+			default:
+				if (('a' <= ch && ch <= 'z') ||
+					('A' <= ch && ch <= 'Z')) {
+					_currentTag = new EndTagToken (ch);
+					_state = TagName;
+				}
+				else {
+					_state = BogusComment;
+				}
+				break;
+			}
 		}
 
 		static int[] _doctype = new int[] {
@@ -497,7 +552,7 @@ namespace Html5.Tokenizer
 			if (ch == '-') {
 				ch = ConsumeNextInputChar ();
 				if (ch == '-') {
-					_currentComment = Token.Comment ();
+					_currentComment = new CommentToken ();
 					_state = CommentStart;
 				}
 				else {
@@ -694,7 +749,7 @@ namespace Html5.Tokenizer
 				break;
 			case -1:
 				ParseError ("Unexpected EOF in DOCTYPE.");
-				Emit (Token.Doctype (true));
+				Emit (new DoctypeToken (true));
 				_state = Data;
 				_state ();
 				break;
@@ -724,24 +779,24 @@ namespace Html5.Tokenizer
 			case 0:
 				ParseError ("Unexpected NULL before DOCTYPE name.");
 				_state = DoctypeName;
-				_currentDoctypeToken = Token.Doctype (false);
+				_currentDoctypeToken = new DoctypeToken (false);
 				_currentDoctypeToken.AppendName ('\uFFFD');
 				break;
 			case -1:
 				ParseError ("Unexpected EOF before DOCTYPE name.");
-				_currentDoctypeToken = Token.Doctype (true);
+				_currentDoctypeToken = new DoctypeToken (true);
 				Emit (_currentDoctypeToken);
 				_state = Data;
 				_state ();
 				break;
 			case '>':
 				ParseError ("Unexpected `>` before DOCTYPE name.");
-				_currentDoctypeToken = Token.Doctype (true);
+				_currentDoctypeToken = new DoctypeToken (true);
 				_state = Data;
 				Emit (_currentDoctypeToken);
 				break;
 			default:
-				_currentDoctypeToken = Token.Doctype (false);
+				_currentDoctypeToken = new DoctypeToken (false);
 				_currentDoctypeToken.AppendName (ch);
 				_state = DoctypeName;
 				break;
@@ -1060,165 +1115,7 @@ namespace Html5.Tokenizer
 		#endregion
 	}
 	
-	public enum TokenType
-	{
-		Character,
-		EndOfFile,
-		StartTag,
-		Doctype,
-		Comment
-	}
 
-	public class Attribute
-	{
-		StringBuilder _name;
-		StringBuilder _value;
-
-		public string Name { get { return _name.ToString (); } }
-		public string Value { get { return _value.ToString (); } }
-
-		public Attribute (string name) {
-			_name = new StringBuilder ();
-			_name.Append (name);
-			_value = new StringBuilder ();
-		}
-
-		public Attribute (int ch) {
-			_name = new StringBuilder();
-			_name.Append ((char)ch);
-			_value = new StringBuilder ();
-		}
-
-		public void AppendName (int ch) {
-			_name.Append ((char)ch);
-		}
-
-		public void AppendValue (int ch) {
-			_value.Append ((char)ch);
-		}
-
-		public override string ToString ()
-		{
-			return Name + " = " + Value;
-		}
-	}
-
-	public enum TokenFlags
-	{
-		None = 0,
-		ForceQuirks = 1
-	}
-
-	public class Token
-	{
-		public TokenType Type;
-
-		TokenFlags _flags;
-
-		public void SetFlag (TokenFlags flag, bool on) {
-			if (on) { _flags |= flag; }
-			else { _flags &= ~flag; }
-		}
-		
-		public char Character;
-
-		StringBuilder _publicIdentifier;
-
-		public void SetEmptyPublicIdentifier ()
-		{
-			_publicIdentifier = new StringBuilder ();
-		}
-
-		public void AppendPublicIdentifier (int ch)
-		{
-			if (_publicIdentifier == null) {
-				_publicIdentifier = new StringBuilder();
-			}
-			_publicIdentifier.Append ((char)ch);
-		}
-
-		StringBuilder _data;
-
-		public void AppendData (int ch)
-		{
-			if (_data == null) {
-				_data = new StringBuilder();
-			}
-			_data.Append ((char)ch);
-		}
-
-		StringBuilder _name;
-
-		public void AppendName (int ch)
-		{
-			if (_name != null) {
-				if ('A' <= ch && ch <= 'Z') {
-					ch -= 0x20;
-				}
-				_name.Append ((char)ch);
-			}
-		}
-
-		List<Attribute> _attributes;
-
-		public void AddAttribute (Attribute attr)
-		{
-			if (_attributes == null) {
-				_attributes = new List<Attribute>();
-			}
-			_attributes.Add (attr);
-		}
-
-		public Attribute CurrentAttribute {
-			get { return (_attributes == null) ? null :
-					_attributes[_attributes.Count - 1]; }
-		}
-		
-		public override string ToString ()
-		{
-			return string.Format ("[Token Type={0}]", Type);
-		}
-
-		public static Token Comment ()
-		{
-			return new Token () {
-				Type = TokenType.Comment,
-			};
-		}
-
-		public static Token Doctype (bool forceQuirksFlag)
-		{
-			return new Token () {
-				Type = TokenType.Doctype,
-				_name = new StringBuilder()
-			};
-		}
-
-		public static Token CharacterToken (int ch)
-		{
-			return new Token () {
-				Type = TokenType.Character,
-				Character = (char)ch
-			};
-		}
-
-		public static Token EndOfFileToken ()
-		{
-			return new Token () {
-				Type = TokenType.EndOfFile
-			};
-		}
-
-		public static Token StartTagToken (int ch)
-		{
-			var tok = new Token () {
-				Type = TokenType.StartTag,
-				_name = new StringBuilder()
-			};
-			tok.AppendName (ch);
-			return tok;
-		}
-	}
 }
 
 

@@ -38,6 +38,8 @@
     <Compile Include="Main.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Tokenizer.cs" />
+    <Compile Include="Attribute.cs" />
+    <Compile Include="Token.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

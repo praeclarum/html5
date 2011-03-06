@@ -6,7 +6,11 @@ namespace Html5
 	{
 		public static void Main (string[] args)
 		{
-			Console.WriteLine ("Hello World!");
+			var path = "/Users/fak/Desktop/HTML5.html";
+			using (var reader = new System.IO.StreamReader (path)) {
+				var tok = new Html5.Tokenizer.Tokenizer (reader);
+				tok.Run ();
+			}
 		}
 	}
 }
