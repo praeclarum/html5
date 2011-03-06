@@ -82,7 +82,59 @@ namespace Html5.Tokenizer
 			}
 		}
 
+		/// <summary>
+		/// Characters the reference in data.
+		/// </summary>
 		void CharacterReferenceInData ()
+		{
+			_additionalAllowedChar = -2;
+			ConsumeCharacterReference ();
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/Overview.html#consume-a-character-reference
+		/// </summary>
+		void ConsumeCharacterReference ()
+		{
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+			case '<':
+			case '&':
+			case -1:
+				// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
+				break;
+			case '#':
+				ch = ConsumeNextInputChar ();
+				if (ch == 'x' || ch == 'X') {
+					ConsumeHexCharacterReference ();
+				}
+				else {
+					ConsumeDecCharacterReference ();
+				}
+				break;
+			default:
+				if (ch == _additionalAllowedChar) {
+					// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
+				}
+				else {
+					throw new NotImplementedException ("Named Ref");
+				}
+				break;
+			}
+		}
+
+		void ConsumeDecCharacterReference ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		void ConsumeHexCharacterReference ()
 		{
 			throw new NotImplementedException ();
 		}

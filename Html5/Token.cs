@@ -74,6 +74,12 @@ namespace Html5.Tokenizer
 
 		List<Attribute> _attributes;
 
+		public IEnumerable<Attribute> Attributes {
+			get {
+				return _attributes ?? System.Linq.Enumerable.Empty<Attribute> ();
+			}
+		}
+
 		public void AddAttribute (Attribute attr)
 		{
 			if (_attributes == null) {
@@ -95,7 +101,18 @@ namespace Html5.Tokenizer
 
 		public override string ToString ()
 		{
-			return string.Format ("<" + Name + ">");
+			var sb = new StringBuilder ();
+			sb.Append ('<');
+			sb.Append (Name);
+			var head = " ";
+			foreach (var attr in Attributes) {
+				sb.Append (head);
+				sb.Append (attr.Name);
+				sb.Append ("=");
+				sb.Append (attr.Value);
+			}
+			sb.Append ('>');
+			return sb.ToString ();
 		}
 	}
 
