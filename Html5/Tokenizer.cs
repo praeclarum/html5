@@ -6,6 +6,11 @@ using System.Linq;
 
 namespace Html5
 {
+	public interface ITokenObserver
+	{
+		void OnNext (Token token);
+	}
+
 	public class Tokenizer
 	{
 		TextReader _reader;
@@ -15,6 +20,7 @@ namespace Html5
 		int _currentInputChar;
 
 		TagToken _currentTag = null;
+		StartTagToken _lastStartTag = null;
 		DoctypeToken _currentDoctypeToken = null;
 		CommentToken _currentComment = null;
 
@@ -29,16 +35,38 @@ namespace Html5
 			_state = Data;
 		}
 
-		List<Token> _currentTokens = new List<Token>();
-
-		public List<Token> GetNextTokens ()
+		public void SetRcdataState ()
 		{
-			_currentTokens.Clear ();
-			while (!_isEof && _currentTokens.Count == 0) {
-				ConsumeNextInputChar ();
+			_state = Rcdata;
+		}
+
+		public void SetScriptDataState ()
+		{
+			_state = ScriptData;
+		}
+
+		public void SetRawTextState ()
+		{
+			_state = RawText;
+		}
+
+		public void Run ()
+		{
+			for (;;) {
+				var ch = ConsumeNextInputChar ();
 				_state ();
+
+				if (ch == -1) {
+					return;
+				}
 			}
-			return _currentTokens;
+		}
+
+		ITokenObserver _observer;
+
+		public void Subscribe (ITokenObserver obs)
+		{
+			_observer = obs;
 		}
 
 		void Emit (Token token)
@@ -46,7 +74,9 @@ namespace Html5
 			if (token.Type == TokenType.EndOfFile) {
 				_isEof = true;
 			}
-			_currentTokens.Add (token);
+			if (_observer != null) {
+				_observer.OnNext (token);
+			}
 			Console.Write (token);
 		}
 
@@ -228,6 +258,163 @@ namespace Html5
 			}
 		}
 
+		void ScriptData ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		void RawText ()
+		{
+			throw new NotImplementedException ();
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#rcdata-state
+		/// </summary>
+		void Rcdata ()
+		{
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '&':
+				_state = CharacterReferenceInRcdata;
+				break;
+			case '<':
+				_state = RcdataLessThanSign;
+				break;
+			case 0:
+				ParseError ("Unexpected NULL in RCDATA.");
+				EmitChar ('\uFFFD');
+				break;
+			case -1:
+				Emit (Token.EndOfFileToken ());
+				break;
+			default:
+				EmitChar (_currentInputChar);
+				break;
+			}
+		}
+
+		string _temporaryBuffer = "";
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#rcdata-less-than-sign-state
+		/// </summary>
+		void RcdataLessThanSign ()
+		{
+			switch (_currentInputChar)
+			{
+			case '/':
+				_temporaryBuffer = "";
+				_state = RcdataEndTagOpen;
+				break;
+			default:
+				EmitChar ('<');
+				_state = Rcdata;
+				_state ();
+				break;
+			}
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#rcdata-end-tag-open-state
+		/// </summary>
+		void RcdataEndTagOpen ()
+		{
+			var ch = _currentInputChar;
+
+			if (('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z')) {
+				_currentTag = new EndTagToken (ch);
+				_temporaryBuffer += (char)ch;
+				_state = RcdataEndTagName;
+			}
+			else {
+				EmitChar ('<');
+				EmitChar ('/');
+				_state = Rcdata;
+				_state ();
+			}
+		}
+
+		bool IsEndTagAppropriate () {
+			var endName = (_currentTag != null) ? _currentTag.Name : "";
+			var startName = (_lastStartTag != null) ? _lastStartTag.Name : "";
+			return endName == startName;
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#rcdata-end-tag-name-state
+		/// </summary>
+		void RcdataEndTagName ()
+		{
+			var handled = false;
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+				if (IsEndTagAppropriate ()) {
+					_state = BeforeAttributeName;
+					handled = true;
+				}
+				break;
+			case '/':
+				if (IsEndTagAppropriate ()) {
+					_state = SelfClosingStartTag;
+					handled = true;
+				}
+				break;
+			case '>':
+				if (IsEndTagAppropriate ()) {
+					Emit (_currentTag);
+					_state = Data;
+					handled = true;
+				}
+				break;
+			default:
+				if (('a' <= ch && ch <= 'z') ||
+					('A' <= ch && ch <= 'Z')) {
+					_currentTag.AppendName (ch);
+					_temporaryBuffer += (char)ch;
+					handled = true;
+				}
+				break;
+			}
+
+			if (!handled) {
+				EmitChar ('<');
+				EmitChar ('/');
+				foreach (var c in _temporaryBuffer) {
+					EmitChar (c);
+				}
+				_state = Rcdata;
+				_state ();
+			}
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#character-reference-in-rcdata-state
+		/// </summary>
+		void CharacterReferenceInRcdata ()
+		{
+			_additionalAllowedChar = -2;
+			var ret = ConsumeCharacterReferenceF ();
+			if (ret == null) {
+				UnconsumeInputChar ();
+				EmitChar ('&');
+			}
+			else {
+				EmitChar (ret.Char1);
+				if (ret.Char2 != 0) EmitChar (ret.Char2);
+			}
+
+			_state = Rcdata;
+		}
+
 		/// <summary>
 		/// http://dev.w3.org/html5/spec/tokenization.html#character-reference-in-data-state
 		/// </summary>
@@ -258,7 +445,8 @@ namespace Html5
 				_state = EndTagOpen;
 			}
 			else if (('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z')) {
-				_currentTag = new StartTagToken (ch);
+				_lastStartTag = new StartTagToken (ch);
+				_currentTag = _lastStartTag;
 				_state = TagName;
 			}
 			else if (ch == '?') {

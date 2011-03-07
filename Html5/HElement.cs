@@ -8,7 +8,7 @@ namespace Html5
 		{
 		}
 
-		public HElement (string name)
+		public HElement (string name) : base (name)
 		{
 		}
 	}

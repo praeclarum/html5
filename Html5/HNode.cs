@@ -12,6 +12,14 @@ namespace Html5
 			get { return _childNodes ?? Enumerable.Empty<HNode> (); }
 		}
 
+		public HNode LastChild {
+			get {
+				return (_childNodes != null) ?
+					_childNodes [_childNodes.Count - 1] :
+					null;
+			}
+		}
+
 		public string NodeName { get; set; }
 
 		public HNode ()
@@ -30,6 +38,11 @@ namespace Html5
 				_childNodes = new List<HNode> ();
 			}
 			_childNodes.Add (newChild);
+		}
+
+		public override string ToString ()
+		{
+			return NodeName;
 		}
 	}
 }

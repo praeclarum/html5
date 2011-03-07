@@ -14,10 +14,12 @@ namespace Html5
 		EndOfFile,
 	}
 
+	[Flags]
 	public enum TokenFlags
 	{
 		None = 0,
-		ForceQuirks = 1
+		ForceQuirks = 1,
+		SelfClosing = 2
 	}
 
 	public class DoctypeToken : Token {
@@ -111,9 +113,11 @@ namespace Html5
 	}
 
 	public class StartTagToken : TagToken {
-		public StartTagToken (int ch) : base (TokenType.EndTag, ch)
+		public StartTagToken (int ch) : base (TokenType.StartTag, ch)
 		{
 		}
+
+		public bool SelfClosingAcknowledged;
 
 		public override string ToString ()
 		{

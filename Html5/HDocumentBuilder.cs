@@ -3,13 +3,14 @@ using System.Collections.Generic;
 
 namespace Html5
 {
-	public class HDocumentBuilder
+	public class HDocumentBuilder : ITokenObserver
 	{
 		Tokenizer _tokenizer;
 
 		Token _currentToken;
 
 		Action _insertMode;
+		Action _origInsertMode;
 
 		HDocument _doc;
 
@@ -19,16 +20,44 @@ namespace Html5
 
 		HElement _headElement;
 
-		HNode CurrentNode {
-			get { return (_openElements.Count > 0) ? _openElements.Peek () : null; } }
+		HElement CurrentNode {
+			get { return (_openElements.Count > 0) ? _openElements.Peek () : null; }
+		}
 
-		HElement InsertElement (string name, Token token)
+		HElement PopElement ()
+		{
+			return _openElements.Pop ();
+		}
+
+		void AcknowledgeSelfClosing (Token token)
+		{
+			var st = token as StartTagToken;
+			if (st != null) {
+				st.SelfClosingAcknowledged = true;
+			}
+		}
+
+		HElement InsertElement (Token token)
+		{
+			var tag = token as TagToken;
+			var name = (tag != null) ? tag.Name : "?";
+			return InsertElement (name, tag);
+		}
+
+		HElement CreateElement (string name, Token token)
 		{
 			var elm = new HElement (name);
 			var tag = token as TagToken;
 
 			if (tag != null) {
 			}
+
+			return elm;
+		}
+
+		HElement InsertElement (string name, Token token)
+		{
+			var elm = CreateElement (name, token);
 
 			var cn = CurrentNode;
 			if (cn == null) {
@@ -46,15 +75,17 @@ namespace Html5
 			_tokenizer = new Tokenizer (reader);
 			_openElements = new Stack<HElement> ();
 			_doc = new HDocument ();
+			_origInsertMode = Initial;
 			_insertMode = Initial;
 
-			while (_currentToken == null || _currentToken.Type != TokenType.EndOfFile) {
-				var toks = _tokenizer.GetNextTokens ();
-				foreach (var t in toks) {
-					_currentToken = t;
-					_insertMode ();
-				}
-			}
+			_tokenizer.Subscribe (this);
+			_tokenizer.Run ();
+		}
+
+		public void OnNext (Token token)
+		{
+			_currentToken = token;
+			_insertMode ();
 		}
 
 		void Initial ()
@@ -120,7 +151,7 @@ namespace Html5
 				break;
 			case TokenType.StartTag:
 				if (((TagToken)t).Name == "html") {
-					var elm = InsertElement ("html", t);
+					InsertElement ("html", t);
 					_insertMode = BeforeHead;
 					handled = true;
 				}
@@ -142,7 +173,7 @@ namespace Html5
 			}
 
 			if (!handled) {
-				var elm = InsertElement ("html", t);
+				InsertElement ("html", t);
 				_insertMode = BeforeHead;
 				handled = true;
 			}
@@ -202,33 +233,163 @@ namespace Html5
 			if (!handled) {
 				_headElement = InsertElement ("head", null);
 				_insertMode = InHead;
+				_insertMode ();
 			}
 		}
 
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#parsing-main-inbody
+		/// </summary>
 		void InBody ()
 		{
 			throw new NotImplementedException ();
 		}
 
+		void InsertChar (int ch) {
+			var cn = CurrentNode;
+
+			if (cn != null) {
+				var t = cn.LastChild as HText;
+				if (t == null) {
+					t = new HText ((char)ch);
+					cn.AppendChild (t);
+				}
+				else {
+					t.AppendData ((char)ch);
+				}
+			}
+		}
+
+		bool _scriptingFlag = true;
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#parsing-main-inhead
+		/// </summary>
 		void InHead ()
 		{
-			throw new NotImplementedException ();
+			var handled = false;
 			var t = _currentToken;
+			var ch = t.Character;
+
 			switch (t.Type)
 			{
 			case TokenType.Character:
+				if (ch == '\t' || ch == '\r' || ch == '\n' || ch == ' ') {
+					InsertChar (ch);
+					handled = true;
+				}
 				break;
 			case TokenType.Comment:
+				CurrentNode.AppendChild (new HComment(((CommentToken)t).Data));
+				handled = true;
 				break;
 			case TokenType.Doctype:
+				ParseError ("Unexpected DOCTYPE in head.");
+				handled = true;
 				break;
 			case TokenType.StartTag:
+				switch (((TagToken)t).Name) {
+				case "html":
+					InBody ();
+					handled = true;
+					break;
+				case "base":
+				case "basefont":
+				case "bgsound":
+				case "command":
+				case "link":
+					InsertElement (t);
+					PopElement ();
+					AcknowledgeSelfClosing (t);
+					handled = true;
+					break;
+				case "meta":
+					InsertElement (t);
+					PopElement ();
+					AcknowledgeSelfClosing (t);
+					handled = true;
+					break;
+				case "title":
+					ParseGenericRcdataElement (t);
+					handled = true;
+					break;
+				case "noscript":
+				case "noframes":
+				case "style":
+					ParseGenericRawTextElement (t);
+					handled = true;
+					break;
+				case "script":
+					InsertElement ("script", t);
+					_tokenizer.SetScriptDataState ();
+					_origInsertMode = _insertMode;
+					_insertMode = Text;
+					break;
+				}
 				break;
 			case TokenType.EndTag:
 				break;
-			default:
-				//Act as if an end tag token with the tag name "head" had been seen, and reprocess the current token.
-				throw new NotImplementedException();
+			}
+
+			if (!handled) {
+			}
+		}
+
+		void ParseGenericRcdataElement (Token t)
+		{
+			InsertElement (t);
+			_tokenizer.SetRcdataState ();
+			_origInsertMode = _insertMode;
+			_insertMode = Text;
+		}
+
+		void ParseGenericRawTextElement (Token t)
+		{
+			InsertElement (t);
+			_tokenizer.SetRawTextState ();
+			_origInsertMode = _insertMode;
+			_insertMode = Text;
+		}
+
+		void MarkScriptAlreadyStarted ()
+		{
+			var cn = CurrentNode;
+			if (cn != null && cn.NodeName == "script") {
+			}
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#parsing-main-incdata
+		/// </summary>
+		void Text ()
+		{
+			var t = _currentToken;
+
+			switch (t.Type) {
+			case TokenType.Character:
+				InsertChar (t.Character);
+				break;
+			case TokenType.EndOfFile:
+				ParseError ("Unexpected EOF in text.");
+				MarkScriptAlreadyStarted ();
+				PopElement ();
+				_insertMode = _origInsertMode;
+				break;
+			case TokenType.EndTag:
+				switch (((TagToken)t).Name)
+				{
+				case "script":
+				{
+					var script = CurrentNode;
+					throw new NotImplementedException ();
+				}
+					break;
+				default:
+					PopElement ();
+					_insertMode = _origInsertMode;
+					break;
+				}
+				break;
 			}
 		}
 	}

@@ -17,14 +17,35 @@ namespace Html5
 			}
 		}
 
+		public void AppendData (string data)
+		{
+			_data.Append (data);
+		}
+
+		public void AppendData (char ch)
+		{
+			_data.Append (ch);
+		}
+
 		public HCharacterData (string data)
 		{
 			_data = new StringBuilder (data);
 		}
 
+		public HCharacterData (char ch)
+		{
+			_data = new StringBuilder ();
+			_data.Append (ch);
+		}
+
 		public HCharacterData ()
 		{
 			_data = new StringBuilder ();
+		}
+
+		public override string ToString ()
+		{
+			return Data;
 		}
 	}
 }
