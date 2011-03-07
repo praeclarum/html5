@@ -265,7 +265,107 @@ namespace Html5
 
 		void RawText ()
 		{
-			throw new NotImplementedException ();
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '<':
+				_state = RawTextLessThanSign;
+				break;
+			case 0:
+				ParseError ("Unexpected NULL in RAWTEXT.");
+				EmitChar ('\uFFFD');
+				break;
+			case -1:
+				Emit (Token.EndOfFileToken ());
+				break;
+			default:
+				EmitChar (_currentInputChar);
+				break;
+			}
+		}
+
+		void RawTextLessThanSign ()
+		{
+			switch (_currentInputChar)
+			{
+			case '/':
+				_temporaryBuffer = "";
+				_state = RawTextEndTagOpen;
+				break;
+			default:
+				EmitChar ('<');
+				_state = RawText;
+				_state ();
+				break;
+			}
+		}
+
+		void RawTextEndTagOpen ()
+		{
+			var ch = _currentInputChar;
+
+			if (('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z')) {
+				_currentTag = new EndTagToken (ch);
+				_temporaryBuffer += (char)ch;
+				_state = RawTextEndTagName;
+			}
+			else {
+				EmitChar ('<');
+				EmitChar ('/');
+				_state = RawText;
+				_state ();
+			}
+		}
+
+		void RawTextEndTagName ()
+		{
+			var handled = false;
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+				if (IsEndTagAppropriate ()) {
+					_state = BeforeAttributeName;
+					handled = true;
+				}
+				break;
+			case '/':
+				if (IsEndTagAppropriate ()) {
+					_state = SelfClosingStartTag;
+					handled = true;
+				}
+				break;
+			case '>':
+				if (IsEndTagAppropriate ()) {
+					Emit (_currentTag);
+					_state = Data;
+					handled = true;
+				}
+				break;
+			default:
+				if (('a' <= ch && ch <= 'z') ||
+					('A' <= ch && ch <= 'Z')) {
+					_currentTag.AppendName (ch);
+					_temporaryBuffer += (char)ch;
+					handled = true;
+				}
+				break;
+			}
+
+			if (!handled) {
+				EmitChar ('<');
+				EmitChar ('/');
+				foreach (var c in _temporaryBuffer) {
+					EmitChar (c);
+				}
+				_state = RawText;
+				_state ();
+			}
 		}
 
 		/// <summary>
