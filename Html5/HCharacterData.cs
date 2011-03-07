@@ -17,6 +17,12 @@ namespace Html5
 			}
 		}
 
+		public override string OuterHtml {
+			get {
+				return Data;
+			}
+		}
+
 		public void AppendData (string data)
 		{
 			_data.Append (data);

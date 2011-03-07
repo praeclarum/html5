@@ -11,6 +11,12 @@ namespace Html5
 		public HDocumentType ()
 		{
 		}
+
+		public override string OuterHtml {
+			get {
+				return "<!DOCTYPE " + Name + ">";
+			}
+		}
 	}
 }
 

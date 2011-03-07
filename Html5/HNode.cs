@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Html5
 {
-	public class HNode
+	public abstract class HNode
 	{
 		List<HNode> _childNodes;
 
@@ -19,6 +19,8 @@ namespace Html5
 					null;
 			}
 		}
+
+		public abstract string OuterHtml { get; }
 
 		public string NodeName { get; set; }
 

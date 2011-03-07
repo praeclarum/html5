@@ -10,6 +10,12 @@ namespace Html5
 		public HDocument ()
 		{
 		}
+
+		public override string OuterHtml {
+			get {
+				return (LastChild != null) ? LastChild.OuterHtml : "";
+			}
+		}
 	}
 }
 
