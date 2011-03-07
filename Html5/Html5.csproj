@@ -41,6 +41,15 @@
     <Compile Include="Attribute.cs" />
     <Compile Include="Token.cs" />
     <Compile Include="CharacterReferences.cs" />
+    <Compile Include="HDocumentBuilder.cs" />
+    <Compile Include="HDocument.cs" />
+    <Compile Include="HNode.cs" />
+    <Compile Include="HComment.cs" />
+    <Compile Include="HCharacterData.cs" />
+    <Compile Include="HText.cs" />
+    <Compile Include="HElement.cs" />
+    <Compile Include="HDocumentType.cs" />
+    <Compile Include="HAttr.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

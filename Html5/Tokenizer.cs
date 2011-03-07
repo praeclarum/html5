@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Linq;
 
-namespace Html5.Tokenizer
+namespace Html5
 {
 	public class Tokenizer
 	{
@@ -26,15 +26,38 @@ namespace Html5.Tokenizer
 		{
 			if (reader == null) throw new ArgumentNullException ("reader");
 			_reader = reader;
+			_state = Data;
 		}
 
-		public void Run ()
+		List<Token> _currentTokens = new List<Token>();
+
+		public List<Token> GetNextTokens ()
 		{
-			_state = Data;
-			while (!_isEof) {
+			_currentTokens.Clear ();
+			while (!_isEof && _currentTokens.Count == 0) {
 				ConsumeNextInputChar ();
 				_state ();
 			}
+			return _currentTokens;
+		}
+
+		void Emit (Token token)
+		{
+			if (token.Type == TokenType.EndOfFile) {
+				_isEof = true;
+			}
+			_currentTokens.Add (token);
+			Console.Write (token);
+		}
+
+		void EmitChar (int ch)
+		{
+			Emit (Token.CharacterTokenF (ch));
+		}
+
+		void ParseError (string message)
+		{
+			Console.Error.WriteLine ("! " + message);
 		}
 
 		int[] _charIndex = new int [32];
@@ -135,7 +158,7 @@ namespace Html5.Tokenizer
 						// Rollback looking for an exact match
 						//
 						UnconsumeInputChar ();
-						
+
 						while (r.Length > 0) {
 							foreach (var m in firstMatches) {
 								if (s(m) == r) {
@@ -177,25 +200,7 @@ namespace Html5.Tokenizer
 		{
 			throw new NotImplementedException ();
 		}
-		
-		void Emit (Token token)
-		{
-			if (token.Type == TokenType.EndOfFile) {
-				_isEof = true;
-			}
-			Console.Write (token);
-		}
 
-		void EmitChar (int ch)
-		{
-			Emit (Token.CharacterTokenF (ch));
-		}
-		
-		void ParseError (string message)
-		{
-			Console.Error.WriteLine ("! " + message);
-		}
-		
 		#region Parse States
 
 		/// <summary>

@@ -2,7 +2,7 @@ using System;
 using System.Text;
 using System.Collections.Generic;
 
-namespace Html5.Tokenizer
+namespace Html5
 {
 	public enum TokenType
 	{
@@ -29,6 +29,8 @@ namespace Html5.Tokenizer
 
 		StringBuilder _name;
 
+		public string Name { get { return _name.ToString (); } }
+
 		public void AppendName (int ch)
 		{
 			if ('A' <= ch && ch <= 'Z') {
@@ -50,6 +52,20 @@ namespace Html5.Tokenizer
 				_publicIdentifier = new StringBuilder();
 			}
 			_publicIdentifier.Append ((char)ch);
+		}
+
+		public string PublicId {
+			get {
+				if (_publicIdentifier != null) return _publicIdentifier.ToString ();
+				else return "";
+			}
+		}
+
+		public string SystemId { get { return ""; } }
+
+		public override string ToString ()
+		{
+			return string.Format ("<DOCTYPE {0}>", Name);
 		}
 	}
 
