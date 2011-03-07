@@ -5,13 +5,15 @@ namespace Html5
 {
 	public static class CharacterReferences
 	{
-		class Item {
+		public class CharRef {
 			public string Name;
 			public char Char1;
 			public char Char2;
 		}
 
-		static List<Item> _items = new List<Item> ();
+		static List<CharRef> _items = new List<CharRef> ();
+
+		public static IEnumerable<CharRef> All { get { return _items; } }
 
 		public static bool FirstCharMatches (int ch)
 		{
@@ -24,12 +26,12 @@ namespace Html5
 
 		static void R (string name, char ch)
 		{
-			_items.Add (new Item () { Name = name, Char1 = ch });
+			_items.Add (new CharRef () { Name = name, Char1 = ch });
 		}
 
 		static void R (string name, char ch1, char ch2)
 		{
-			_items.Add (new Item () { Name = name, Char1 = ch1, Char2 = ch2 });
+			_items.Add (new CharRef () { Name = name, Char1 = ch1, Char2 = ch2 });
 		}
 
 		static CharacterReferences ()

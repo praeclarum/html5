@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 
 namespace Html5.Tokenizer
 {
@@ -35,17 +36,35 @@ namespace Html5.Tokenizer
 				_state ();
 			}
 		}
+
+		int[] _charIndex = new int [32];
+
+		int _writeCharIndex = 0;
+		int _readCharIndex = 0;
 		
 		int ConsumeNextInputChar ()
 		{
-			_currentInputChar = _reader.Read ();
+			if (_readCharIndex == _writeCharIndex) {
+				_charIndex [_readCharIndex] = _reader.Read ();
+				_writeCharIndex = (_writeCharIndex + 1) % _charIndex.Length;
+			}
+			_currentInputChar = _charIndex [_readCharIndex];
+			_readCharIndex = (_readCharIndex + 1) % _charIndex.Length;
 			return _currentInputChar;
 		}
 
+		void UnconsumeInputChar ()
+		{
+			_readCharIndex -= 1;
+			if (_readCharIndex < 0) {
+				_readCharIndex += _charIndex.Length;
+			}
+		}
+
 		/// <summary>
-		/// http://dev.w3.org/html5/spec/Overview.html#consume-a-character-reference
+		/// http://dev.w3.org/html5/spec/tokenization.html#consume-a-character-reference
 		/// </summary>
-		string ConsumeCharacterReferenceF ()
+		CharacterReferences.CharRef ConsumeCharacterReferenceF ()
 		{
 			var ch = _currentInputChar;
 
@@ -59,7 +78,7 @@ namespace Html5.Tokenizer
 			case '&':
 			case -1:
 				// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
-				return "";
+				return null;
 			case '#':
 				ch = ConsumeNextInputChar ();
 				if (ch == 'x' || ch == 'X') {
@@ -71,26 +90,90 @@ namespace Html5.Tokenizer
 			default:
 				if (_additionalAllowedChar > 0 && ch == _additionalAllowedChar) {
 					// Not a character reference. No characters are consumed, and nothing is returned. (This is not an error, either.)
-					return "";
+					return null;
 				}
 				else {
 					if (CharacterReferences.FirstCharMatches (ch)) {
-						throw new NotImplementedException ("Named Ref");
+						var ret = ConsumeNamedCharacterReference ();
+						if (!ret.Name.EndsWith(";")) {
+							ParseError ("Character reference `" + ret.Name + "` should end with a semicolon.");
+						}
+						return ret;
 					}
 					else {
 						// If no match can be made, then no characters are consumed, and nothing is returned.
-						return "";
+						return null;
 					}
 				}
 			}
 		}
 
-		string ConsumeDecCharacterReference ()
+		CharacterReferences.CharRef ConsumeNamedCharacterReference ()
+		{
+			Func<CharacterReferences.CharRef, string> s = x => x.Name;
+			var r = ((char)_currentInputChar).ToString ();
+
+
+			var firstMatches = FindPrefixes (CharacterReferences.All, s, r).ToList ();
+
+			var matches = firstMatches;
+
+			while (matches.Count > 0) {
+				if (matches.Count == 1) {
+					return matches [0];
+				}
+				else {
+					//
+					// Are there any longer matches?
+					//
+					var ch = ConsumeNextInputChar ();
+					var newR = r + (char)ch;
+					var longerMatches = FindPrefixes (matches, s, newR).ToList ();
+
+					if (longerMatches.Count == 0) {
+						//
+						// Rollback looking for an exact match
+						//
+						UnconsumeInputChar ();
+						
+						while (r.Length > 0) {
+							foreach (var m in firstMatches) {
+								if (s(m) == r) {
+									return m;
+								}
+							}
+
+							r = r.Substring (0, r.Length - 1);
+							UnconsumeInputChar ();
+						}
+						throw new NotImplementedException ("MATCH");
+					}
+					else {
+						matches = longerMatches;
+						r = newR;
+					}
+				}
+			}
+
+			throw new NotImplementedException ();
+		}
+
+		static IEnumerable<T> FindPrefixes<T> (IEnumerable<T> items, Func<T,string> selector, string prefix)
+		{
+			foreach (var i in items) {
+				var s = selector (i);
+				if (s.StartsWith (prefix)) {
+					yield return i;
+					}
+				}
+		}
+
+		CharacterReferences.CharRef ConsumeDecCharacterReference ()
 		{
 			throw new NotImplementedException ();
 		}
 
-		string ConsumeHexCharacterReference ()
+		CharacterReferences.CharRef ConsumeHexCharacterReference ()
 		{
 			throw new NotImplementedException ();
 		}
@@ -110,13 +193,13 @@ namespace Html5.Tokenizer
 		
 		void ParseError (string message)
 		{
-			Console.WriteLine ("! " + message);
+			Console.Error.WriteLine ("! " + message);
 		}
 		
 		#region Parse States
 
 		/// <summary>
-		/// http://dev.w3.org/html5/spec/Overview.html#data-state
+		/// http://dev.w3.org/html5/spec/tokenization.html#data-state
 		/// </summary>
 		void Data ()
 		{
@@ -141,18 +224,22 @@ namespace Html5.Tokenizer
 		}
 
 		/// <summary>
-		/// http://dev.w3.org/html5/spec/Overview.html#character-reference-in-data-state
+		/// http://dev.w3.org/html5/spec/tokenization.html#character-reference-in-data-state
 		/// </summary>
 		void CharacterReferenceInData ()
 		{
 			_additionalAllowedChar = -2;
 			var ret = ConsumeCharacterReferenceF ();
-			if (string.IsNullOrEmpty (ret)) {
+			if (ret == null) {
+				UnconsumeInputChar ();
 				EmitChar ('&');
 			}
-			_state = Data;
+			else {
+				EmitChar (ret.Char1);
+				if (ret.Char2 != 0) EmitChar (ret.Char2);
+			}
 
-			_state ();// UnconsumeChar
+			_state = Data;
 		}
 
 		void TagOpen ()
