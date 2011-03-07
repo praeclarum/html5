@@ -258,9 +258,131 @@ namespace Html5
 			}
 		}
 
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#script-data-state
+		/// </summary>
 		void ScriptData ()
 		{
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '<':
+				_state = ScriptDataLessThanSign;
+				break;
+			case 0:
+				ParseError ("Unexpected NULL in script data.");
+				EmitChar ('\uFFFD');
+				break;
+			case -1:
+				Emit (Token.EndOfFileToken ());
+				break;
+			default:
+				EmitChar (_currentInputChar);
+				break;
+			}
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#script-data-less-than-sign-state
+		/// </summary>
+		void ScriptDataLessThanSign ()
+		{
+			switch (_currentInputChar)
+			{
+			case '/':
+				_temporaryBuffer = "";
+				_state = ScriptDataEndTagOpen;
+				break;
+			case '!':
+				_state = ScriptDataEscapeStart;
+				EmitChar ('<');
+				EmitChar ('!');
+				break;
+			default:
+				EmitChar ('<');
+				_state = ScriptData;
+				_state ();
+				break;
+			}
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#script-data-escape-start-state
+		/// </summary>
+		void ScriptDataEscapeStart ()
+		{
 			throw new NotImplementedException ();
+		}
+
+		void ScriptDataEndTagOpen ()
+		{
+			var ch = _currentInputChar;
+
+			if (('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z')) {
+				_currentTag = new EndTagToken (ch);
+				_temporaryBuffer += (char)ch;
+				_state = ScriptDataEndTagName;
+			}
+			else {
+				EmitChar ('<');
+				EmitChar ('/');
+				_state = ScriptData;
+				_state ();
+			}
+		}
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#script-data-end-tag-name-state
+		/// </summary>
+		void ScriptDataEndTagName ()
+		{
+			var handled = false;
+			var ch = _currentInputChar;
+
+			switch (ch)
+			{
+			case '\t':
+			case '\r':
+			case '\n':
+			case ' ':
+				if (IsEndTagAppropriate ()) {
+					_state = BeforeAttributeName;
+					handled = true;
+				}
+				break;
+			case '/':
+				if (IsEndTagAppropriate ()) {
+					_state = SelfClosingStartTag;
+					handled = true;
+				}
+				break;
+			case '>':
+				if (IsEndTagAppropriate ()) {
+					Emit (_currentTag);
+					_state = Data;
+					handled = true;
+				}
+				break;
+			default:
+				if (('a' <= ch && ch <= 'z') ||
+					('A' <= ch && ch <= 'Z')) {
+					_currentTag.AppendName (ch);
+					_temporaryBuffer += (char)ch;
+					handled = true;
+				}
+				break;
+			}
+
+			if (!handled) {
+				EmitChar ('<');
+				EmitChar ('/');
+				foreach (var c in _temporaryBuffer) {
+					EmitChar (c);
+				}
+				_state = ScriptData;
+				_state ();
+			}
 		}
 
 		void RawText ()
@@ -513,6 +635,26 @@ namespace Html5
 			}
 
 			_state = Rcdata;
+		}
+
+		Action _characterReferenceInAttributeValuePrev;
+
+		/// <summary>
+		/// http://dev.w3.org/html5/spec/tokenization.html#character-reference-in-attribute-value-state
+		/// </summary>
+		void CharacterReferenceInAttributeValue ()
+		{
+			var ret = ConsumeCharacterReferenceF ();
+			if (ret == null) {
+				UnconsumeInputChar ();
+				EmitChar ('&');
+			}
+			else {
+				EmitChar (ret.Char1);
+				if (ret.Char2 != 0) EmitChar (ret.Char2);
+			}
+
+			_state = _characterReferenceInAttributeValuePrev;
 		}
 
 		/// <summary>
@@ -799,6 +941,7 @@ namespace Html5
 				break;
 			case '&':
 				_additionalAllowedChar = -2;
+				_characterReferenceInAttributeValuePrev = _state;
 				_state = CharacterReferenceInAttributeValue;
 				break;
 			case 0:
@@ -833,6 +976,7 @@ namespace Html5
 				break;
 			case '&':
 				_additionalAllowedChar = '>';
+				_characterReferenceInAttributeValuePrev = _state;
 				_state = CharacterReferenceInAttributeValue;
 				break;
 			case '>':
@@ -876,6 +1020,7 @@ namespace Html5
 				break;
 			case '&':
 				_additionalAllowedChar = -2;
+				_characterReferenceInAttributeValuePrev = _state;
 				_state = CharacterReferenceInAttributeValue;
 				break;
 			case 0:
@@ -891,14 +1036,6 @@ namespace Html5
 				_currentTag.CurrentAttribute.AppendValue (ch);
 				break;
 			}
-		}
-
-		/// <summary>
-		/// http://dev.w3.org/html5/spec/Overview.html#character-reference-in-attribute-value-state
-		/// </summary>
-		void CharacterReferenceInAttributeValue ()
-		{
-			throw new NotImplementedException ();
 		}
 
 		/// <summary>

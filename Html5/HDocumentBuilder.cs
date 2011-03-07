@@ -358,6 +358,10 @@ namespace Html5
 			}
 		}
 
+		void ExecuteScript (HElement script)
+		{
+		}
+
 		/// <summary>
 		/// http://dev.w3.org/html5/spec/tokenization.html#parsing-main-incdata
 		/// </summary>
@@ -379,10 +383,8 @@ namespace Html5
 				switch (((TagToken)t).Name)
 				{
 				case "script":
-				{
-					var script = CurrentNode;
-					throw new NotImplementedException ();
-				}
+					ExecuteScript (PopElement ());
+					_insertMode = _origInsertMode;
 					break;
 				default:
 					PopElement ();
